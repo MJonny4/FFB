@@ -1,0 +1,14 @@
+{
+  "name": "ffb",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "infra:up": "docker start my-postgres redis",
+    "infra:down": "docker stop my-postgres redis",
+    "dev:api": "bun run --filter api start:dev",
+    "dev:web": "bun run --filter web dev"
+  },
+  "devDependencies": {
+    "typescript": "^6"
+  }
+}
