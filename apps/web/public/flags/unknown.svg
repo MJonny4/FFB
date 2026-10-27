@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 3" role="img" aria-label="Unknown country">
+  <rect width="4" height="3" rx=".2" fill="#e2e8f0"/>
+  <circle cx="2" cy="1.5" r=".8" fill="none" stroke="#64748b" stroke-width=".18"/>
+  <path d="M1.2 1.5h1.6M2 .7c.3.25.45.52.45.8S2.3 2.05 2 2.3M2 .7c-.3.25-.45.52-.45.8s.15.55.45.8" fill="none" stroke="#64748b" stroke-width=".14"/>
+</svg>

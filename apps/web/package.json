@@ -1,5 +1,5 @@
 {
-  "name": "web",
+  "name": "@ffb/web",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -11,6 +11,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@ffb/contracts": "workspace:*",
+    "@ffb/football": "workspace:*",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },

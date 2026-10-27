@@ -7,5 +7,9 @@
   },
   "scripts": {
     "typecheck": "tsc --project tsconfig.json"
+  },
+  "dependencies": {
+    "@ffb/football": "workspace:*",
+    "zod": "^4.6.7"
   }
 }

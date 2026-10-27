@@ -6,5 +6,12 @@
     "dev": "bun --watch src/index.ts",
     "start": "bun src/index.ts",
     "typecheck": "tsc --project tsconfig.json"
+  },
+  "dependencies": {
+    "@ffb/config": "workspace:*",
+    "@ffb/contracts": "workspace:*",
+    "@ffb/database": "workspace:*",
+    "@ffb/football": "workspace:*",
+    "@ffb/simulation": "workspace:*"
   }
 }

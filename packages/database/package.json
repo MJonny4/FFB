@@ -7,5 +7,11 @@
   },
   "scripts": {
     "typecheck": "tsc --project tsconfig.json"
+  },
+  "dependencies": {
+    "@ffb/config": "workspace:*",
+    "@ffb/contracts": "workspace:*",
+    "@ffb/football": "workspace:*",
+    "@ffb/simulation": "workspace:*"
   }
 }
