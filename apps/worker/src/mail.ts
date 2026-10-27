@@ -1,5 +1,6 @@
 import type { SQL } from "bun";
 import type { Config } from "@ffb/config";
+import nodemailer from "nodemailer";
 export interface Mail {
   id: string;
   recipient: string;
@@ -9,13 +10,53 @@ export interface Mail {
 export interface MailProvider {
   send(mail: Mail): Promise<string>;
 }
-export function mailProvider(config: Config): MailProvider {
+interface SmtpTransport {
+  sendMail(message: { from: string; to: string; subject: string; text: string }): Promise<{
+    messageId: string;
+  }>;
+}
+type CreateSmtpTransport = (options: {
+  host: string;
+  port: number;
+  secure: boolean;
+  auth: { user: string; pass: string };
+  connectionTimeout: number;
+  greetingTimeout: number;
+  socketTimeout: number;
+}) => SmtpTransport;
+export function mailProvider(
+  config: Config,
+  createSmtpTransport: CreateSmtpTransport = (options) => nodemailer.createTransport(options),
+): MailProvider {
   if (config.MAIL_MODE === "capture")
     return {
       async send(mail) {
         return `captured:${mail.id}`;
       },
     };
+  if (config.MAIL_MODE === "smtp") {
+    const transport = createSmtpTransport({
+      host: config.SMTP_HOST!,
+      port: config.SMTP_PORT!,
+      secure: config.SMTP_SECURE!,
+      auth: { user: config.SMTP_USER!, pass: config.SMTP_PASS! },
+      connectionTimeout: 15000,
+      greetingTimeout: 15000,
+      socketTimeout: 15000,
+    });
+    return {
+      async send(mail) {
+        const result = await transport.sendMail({
+          from: config.SMTP_FROM!,
+          to: mail.recipient,
+          subject: mail.subject,
+          text: mail.body,
+        });
+        if (!result.messageId) throw new Error("Invalid SMTP response");
+        return result.messageId;
+      },
+    };
+  }
   return {
     async send(mail) {
       const response = await fetch("https://api.resend.com/emails", {

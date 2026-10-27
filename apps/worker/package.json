@@ -12,6 +12,7 @@
     "@ffb/contracts": "workspace:*",
     "@ffb/database": "workspace:*",
     "@ffb/football": "workspace:*",
-    "@ffb/simulation": "workspace:*"
+    "@ffb/simulation": "workspace:*",
+    "nodemailer": "10.2.1"
   }
 }

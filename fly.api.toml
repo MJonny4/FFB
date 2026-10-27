@@ -1,5 +1,5 @@
 app = "ffb-api"
-primary_region = "mad"
+primary_region = "cdg"
 kill_signal = "SIGTERM"
 kill_timeout = "30s"
 
@@ -10,7 +10,9 @@ dockerfile = "Dockerfile"
 NODE_ENV = "production"
 API_HOST = "0.0.0.0"
 API_PORT = "8080"
-MAIL_MODE = "resend"
+MAIL_MODE = "smtp"
+WEB_ORIGIN = "https://ffb-web-coral.vercel.app"
+TRUST_FLY_PROXY = "true"
 
 [deploy]
 release_command = "bun packages/database/src/migrate.ts"

@@ -1,0 +1,17 @@
+.Code/
+.codex/
+.env
+.env.*
+!.env.example
+.git/
+node_modules/
+apps/*/node_modules/
+packages/*/node_modules/
+apps/api/
+apps/worker/
+compose.yaml
+Dockerfile
+fly.*.toml
+tests/
+docs/
+TODO.md

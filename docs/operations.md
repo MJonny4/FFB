@@ -14,9 +14,10 @@ Private `.env` files and cloud secrets are never application source. Run Bun com
 | `TRUST_FLY_PROXY`     | Default false; Fly API config enables trusted Fly-Client-IP for per-client rate limits. Enable only behind Fly Proxy. |
 | `API_HOST`            | Default `0.0.0.0`                                                                                                     |
 | `API_PORT`            | Default 3000, falls back to `PORT`; Fly configuration uses 8080                                                       |
-| `MAIL_MODE`           | `capture` locally, `resend` required in production                                                                    |
+| `MAIL_MODE`           | `capture` locally; `resend` or TLS `smtp` in production                                                               |
 | `MAIL_FROM`           | Sender identity; configure a verified domain for production                                                           |
 | `RESEND_API_KEY`      | Required with `MAIL_MODE=resend`; server secret                                                                       |
+| `SMTP_*`              | Host, port, TLS flag, user, app password and sender required with `MAIL_MODE=smtp`                                    |
 | `VITE_API_URL`        | Public API origin, e.g. `https://api.example.com`; empty uses same-origin Vite proxy locally                          |
 
 Only `VITE_API_URL` belongs in the web environment. Never put database, Redis, or provider credentials in `VITE_*` variables.
@@ -52,7 +53,7 @@ FROM mail_outbox WHERE delivered_at IS NULL;
 SELECT status, count(*) FROM matches GROUP BY status;
 ```
 
-The email outbox sends through a small provider adapter. Capture mode never sends network email. Resend uses the outbox ID as an idempotency key; provider deduplication has a 24-hour retention window, so an ambiguous send followed by a retry after that window can deliver a duplicate link. Single-use account tokens keep consumption safe. No provider API was called during local migration validation.
+The email outbox sends through a small provider adapter. Capture mode never sends network email. Resend uses the outbox ID as an idempotency key; SMTP relies on the provider message ID and can duplicate a message after an ambiguous network failure. Single-use account tokens keep consumption safe. No provider API was called during local migration validation.
 
 ## Native WebSocket v1
 
@@ -75,7 +76,7 @@ Configuration files are prepared only; nothing has been created, pushed or deplo
 3. **Upstash:** select a Redis database and take its TLS TCP endpoint (`rediss://`), not its HTTPS REST URL. Configure both services in compatible nearby regions. Required commands are PING, PUBLISH/SUBSCRIBE and Lua INCR/EXPIRE. Redis eviction or loss cannot lose bets or results; transient rate limits and notifications can reset.
 4. **Fly.io:** replace the example app names in `fly.api.toml` and `fly.worker.toml` with names you own, create both apps in organization `mjonny4`, and configure secrets through Fly's secret manager. Keep at least one API Machine and one persistent worker Machine. Use the same tested source version for both. Deploy API first to run the release migration, seed intentionally once, then deploy worker. API binds 0.0.0.0:8080; worker has no HTTP service. Both handle SIGTERM. Config does not create resources or secrets by itself.
 5. **Vercel:** create a Vite project with Root Directory `apps/web` and allow source outside that directory. Use its `vercel.json`, Bun 1.4.4/frozen install, and set only public `VITE_API_URL`. Configure the sibling HTTPS web domain and matching API `WEB_ORIGIN`. Deploy the web client after the API is healthy. Verify login cookies and direct native WebSocket upgrade on the API domain.
-6. **Email:** configure Resend's verified sender, MAIL_FROM, MAIL_MODE=resend and the private API key on server processes. Exercise delivery using an account you own after deployment approval.
+6. **Email:** configure either Resend with a verified sender or TLS SMTP with an authorized sender and app password. Exercise delivery using an account you own after deployment approval.
 
 Local configuration validation: `docker compose config --quiet`; parse both Fly TOML files with `Bun.TOML.parse`, and Vercel JSON with `JSON.parse`. A production container can be built with `docker build -t ffb-local .`; use the API CMD or override with `bun apps/worker/src/index.ts` for the worker. Supply runtime environment securely. No credentials enter image layers.
 

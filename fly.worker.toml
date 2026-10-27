@@ -1,5 +1,5 @@
 app = "ffb-worker"
-primary_region = "mad"
+primary_region = "cdg"
 kill_signal = "SIGTERM"
 kill_timeout = "30s"
 
@@ -8,7 +8,8 @@ dockerfile = "Dockerfile"
 
 [env]
 NODE_ENV = "production"
-MAIL_MODE = "resend"
+MAIL_MODE = "smtp"
+WEB_ORIGIN = "https://ffb-web-coral.vercel.app"
 
 [processes]
 worker = "bun apps/worker/src/index.ts"

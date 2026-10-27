@@ -27,7 +27,7 @@ Open http://localhost:5173. The API defaults to port 3000 and binds `0.0.0.0`. `
 
 Register through the app. Signup credits 1,000 whole virtual coins; Monday rounds credit 200. Rounds open Monday 09:00 and betting/cancellation close Friday 23:59 in `Europe/Madrid`. Games run Saturday and Sunday, with lineups locked one hour before kickoff. Seeding on a weekend prepares the next Monday job rather than inventing an open betting window. Keep the worker running for continuous games and email delivery.
 
-`MAIL_MODE=capture` stores local messages privately in `mail_outbox`, with `provider_id` beginning `captured:` after delivery. Inspect that table in a local database GUI to open verification/reset links. Tokens and messages never go to logs or public APIs. Production requires the HTTPS Resend adapter and a verified sender.
+`MAIL_MODE=capture` stores local messages privately in `mail_outbox`, with `provider_id` beginning `captured:` after delivery. Inspect that table in a local database GUI to open verification/reset links. Tokens and messages never go to logs or public APIs. Production requires either the HTTPS Resend adapter or TLS SMTP with an authorized sender.
 
 ## Validation
 

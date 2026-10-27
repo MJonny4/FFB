@@ -3,6 +3,8 @@ import { signup, login, user, requestToken, consumeToken } from "@ffb/database";
 import { input, json, requireUser, cookie, type Context } from "../http.ts";
 export async function authRoutes(ctx: Context, path: string) {
   const { request, sql, config } = ctx;
+  if (path === "/api/auth/session" && request.method === "GET")
+    return json(ctx.userId ? await user(sql, ctx.userId) : null);
   if (request.method !== "POST" || !path.startsWith("/api/auth/")) return null;
   const production = config.NODE_ENV === "production";
   if (path === "/api/auth/signup" || path === "/api/auth/login") {

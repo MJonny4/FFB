@@ -224,6 +224,9 @@ suite("isolated local PostgreSQL / Redis integration", () => {
   test("API contracts, CORS, CSRF, auth, avatar validation and health", async () => {
     expect((await request("/health/live")).status).toBe(200);
     expect((await request("/health/ready")).status).toBe(200);
+    const signedOutSession = await request("/api/auth/session", {}, "");
+    expect(signedOutSession.status).toBe(200);
+    expect(await signedOutSession.json()).toBeNull();
     expect((await request("/api/users/me", {}, "")).status).toBe(401);
     expect(
       (await request("/api/bets", { method: "POST", body: JSON.stringify({ stake: -1 }) })).status,
@@ -241,8 +244,11 @@ suite("isolated local PostgreSQL / Redis integration", () => {
     ).toBe(403);
     const response = await request("/api/users/me");
     expect(response.status).toBe(200);
-    const data = await response.json();
+    const data = (await response.json()) as { id: string };
     expect(data).not.toHaveProperty("passwordHash");
+    const signedInSession = await request("/api/auth/session");
+    expect(signedInSession.status).toBe(200);
+    expect(((await signedInSession.json()) as { id: string }).id).toBe(data.id);
     const form = new FormData();
     form.set("avatar", new File(["<svg/>"], "bad.png", { type: "image/png" }));
     const bad = await request("/api/users/me/avatar", { method: "POST", body: form });

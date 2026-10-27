@@ -34,7 +34,7 @@ export default function App() {
   useEffect(() => {
     let active = true;
     const load = () => {
-      void request("/api/users/me", userSchema)
+      void request("/api/auth/session", userSchema.nullable())
         .then((u) => {
           if (active) {
             setUser(u);

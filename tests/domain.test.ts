@@ -22,6 +22,7 @@ import {
 } from "@ffb/simulation";
 import { betInput, lineupInput, clientMessage, serverMessage } from "@ffb/contracts";
 import { loadConfig } from "@ffb/config";
+import { mailProvider } from "../apps/worker/src/mail.ts";
 const legacyResult = await Bun.file(
   new URL("./fixtures/legacy-result.json", import.meta.url),
 ).json();
@@ -226,5 +227,74 @@ describe("contracts and config", () => {
         WEB_ORIGIN: "http://localhost:5173",
       }),
     ).toThrow();
+  });
+  test("production accepts complete TLS SMTP settings and rejects missing credentials", () => {
+    const smtp = {
+      NODE_ENV: "production",
+      DATABASE_URL: "postgres://database.example/ffb",
+      REDIS_URL: "rediss://redis.example:6379",
+      WEB_ORIGIN: "https://ffb.example",
+      MAIL_MODE: "smtp",
+      SMTP_HOST: "smtp.gmail.com",
+      SMTP_PORT: "465",
+      SMTP_SECURE: "true",
+      SMTP_USER: "manager@example.com",
+      SMTP_PASS: "app-password",
+      SMTP_FROM: "manager@example.com",
+    };
+    expect(loadConfig(smtp)).toMatchObject({
+      MAIL_MODE: "smtp",
+      SMTP_PORT: 465,
+      SMTP_SECURE: true,
+    });
+    expect(() => loadConfig({ ...smtp, SMTP_PASS: undefined })).toThrow();
+  });
+  test("SMTP mail uses the configured TLS transport and sender", async () => {
+    const config = loadConfig({
+      NODE_ENV: "production",
+      DATABASE_URL: "postgres://database.example/ffb",
+      REDIS_URL: "rediss://redis.example:6379",
+      WEB_ORIGIN: "https://ffb.example",
+      MAIL_MODE: "smtp",
+      SMTP_HOST: "smtp.gmail.com",
+      SMTP_PORT: "465",
+      SMTP_SECURE: "true",
+      SMTP_USER: "manager@example.com",
+      SMTP_PASS: "app-password",
+      SMTP_FROM: "manager@example.com",
+    });
+    let transportOptions: unknown, message: unknown;
+    const provider = mailProvider(config, (options) => {
+      transportOptions = options;
+      return {
+        async sendMail(value) {
+          message = value;
+          return { messageId: "gmail-message-id" };
+        },
+      };
+    });
+    await expect(
+      provider.send({
+        id: "mail-1",
+        recipient: "user@example.com",
+        subject: "Verify",
+        body: "Link",
+      }),
+    ).resolves.toBe("gmail-message-id");
+    expect(transportOptions).toEqual({
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true,
+      auth: { user: "manager@example.com", pass: "app-password" },
+      connectionTimeout: 15000,
+      greetingTimeout: 15000,
+      socketTimeout: 15000,
+    });
+    expect(message).toEqual({
+      from: "manager@example.com",
+      to: "user@example.com",
+      subject: "Verify",
+      text: "Link",
+    });
   });
 });
