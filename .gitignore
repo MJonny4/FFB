@@ -10,6 +10,7 @@ dist
 coverage
 *.lcov
 .Code/
+Deployment.md
 TODO.md
 
 # logs

@@ -55,6 +55,6 @@ docker compose config --quiet
 
 SQL migrations are ordered, transactional, checksum-checked and advisory-locked. Never edit an applied migration; add a new file under `packages/database/migrations`. `db:migrate` uses `DIRECT_DATABASE_URL` if set; runtime and seed use `DATABASE_URL`. Seeds are repeatable and preserve manager lineups, accounts, balances, and historical fixtures. This is a fresh target schema, not an in-place Prisma upgrade or private database import.
 
-See [operations and deployment](docs/operations.md) for environment variables, manual Neon/Upstash/Fly/Vercel setup, live protocol, recovery, and limitations. Audit and execution evidence is local-only under `.Code/docs/`. No deployment or Git publishing is performed by the migration.
+See [operations](docs/operations.md) for environment, security, live protocol, recovery, and limitation details. Audit and execution evidence is local-only under `.Code/docs/`.
 
 Static club/player assets retain the legacy MIT license. Country flags retain [their MIT license](apps/web/public/flags/LICENSE.flag-icons).
