@@ -1,15 +1,30 @@
 {
   "name": "ffb",
-  "module": "index.ts",
-  "type": "module",
   "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "type": "module",
   "scripts": {
-    "typecheck": "bun check"
+    "typecheck": "bun run --workspaces --if-present typecheck",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint . --fix",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "check": "bun run typecheck && bun run lint && bun run format:check",
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down",
+    "infra:logs": "docker compose logs -f",
+    "dev:web": "bun --cwd apps/web dev",
+    "build:web": "bun --cwd apps/web build",
+    "lint:web": "bun --cwd apps/web lint"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "oxfmt": "0.75.0",
+    "oxlint": "1.90.0",
+    "typescript": "~7.0.2"
   },
-  "peerDependencies": {
-    "typescript": "^7"
-  }
+  "packageManager": "bun@1.4.4"
 }

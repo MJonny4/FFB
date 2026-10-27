@@ -1,0 +1,10 @@
+{
+  "name": "@ffb/worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "typecheck": "tsc --project tsconfig.json"
+  }
+}
