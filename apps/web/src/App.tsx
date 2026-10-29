@@ -177,14 +177,7 @@ export default function App() {
       </a>
       <aside className={`sidebar ${menuOpen ? "menu-open" : ""}`}>
         <a className="brand" href="#/matches" aria-label="FFB · The Touchline, fixtures">
-          <svg className="brand-mark" viewBox="0 0 40 40" aria-hidden="true">
-            <path
-              d="M5 34V6h30M5 20h22M18 34V20M27 6v14"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="4"
-            />
-          </svg>
+          <img className="brand-mark" src="/app-icon.png" width="60" height="70" alt="" />
           <span>
             FFB<span className="brand-sub">The Touchline</span>
           </span>
