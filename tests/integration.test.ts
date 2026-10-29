@@ -30,7 +30,7 @@ import {
   settle,
   ensureRound,
 } from "@ffb/database";
-import { roundCalendar, type SimulationState } from "@ffb/football";
+import { calculatePayout, roundCalendar, type SimulationState } from "@ffb/football";
 import { loadConfig } from "@ffb/config";
 import { startApi } from "../apps/api/src/server.ts";
 import { startWorker } from "../apps/worker/src/worker.ts";
@@ -200,6 +200,121 @@ suite("isolated local PostgreSQL / Redis integration", () => {
     const [refunds] =
       await sql`SELECT count(*)::int AS n FROM ledger WHERE reference=${`bet:${bet.betId}:refund`}`;
     expect(refunds.n).toBe(1);
+  });
+  test("stale odds never debit the wallet and accepted receipts survive quote changes", async () => {
+    const match = (await currentRound(sql))!.matches.find((m) => m.id === matchId)!;
+    const quote = match.quotes.find((q) => q.market === "MATCH_RESULT" && q.selection === "DRAW")!;
+    const input = {
+      matchId,
+      market: quote.market,
+      selection: quote.selection,
+      stake: 7,
+      requestId: crypto.randomUUID(),
+      expectedOdds: quote.odds,
+    };
+    const before = (await user(sql, first.userId)).coinBalance;
+    const stale = await request("/api/bets", {
+      method: "POST",
+      body: JSON.stringify({ ...input, expectedOdds: "1.0100" }),
+    });
+    expect(stale.status).toBe(409);
+    expect((await user(sql, first.userId)).coinBalance).toBe(before);
+    const response = await request("/api/bets", { method: "POST", body: JSON.stringify(input) });
+    expect(response.status).toBe(201);
+    const accepted = (await response.json()) as {
+      betId: string;
+      coinBalance: number;
+      oddsTaken: string;
+    };
+    expect(accepted).toMatchObject({
+      matchId,
+      market: quote.market,
+      selection: quote.selection,
+      stake: 7,
+      oddsTaken: quote.odds,
+      potentialPayout: calculatePayout(7, quote.odds),
+      coinBalance: before - 7,
+    });
+    await sql`INSERT INTO odds(id,match_id,market,selection,odds,revision) SELECT gen_random_uuid()::text,match_id,market,selection,CASE WHEN market=${quote.market} AND selection=${quote.selection} THEN odds+1 ELSE odds END,revision+1 FROM odds WHERE match_id=${matchId} AND revision=(SELECT max(revision) FROM odds WHERE match_id=${matchId})`;
+    try {
+      const replay = await request("/api/bets", { method: "POST", body: JSON.stringify(input) });
+      expect(replay.status).toBe(201);
+      expect(await replay.json()).toEqual(accepted);
+      const [debits] =
+        await sql`SELECT count(*)::int AS n FROM ledger WHERE reference=${`bet:${accepted.betId}:stake`}`;
+      expect(debits.n).toBe(1);
+    } finally {
+      await cancelBet(sql, first.userId, accepted.betId);
+    }
+  });
+  test("an accepted full-wallet bet can be recovered after betting closes", async () => {
+    const match = (await currentRound(sql))!.matches.find((m) => m.id === matchId)!;
+    const quote = match.quotes.find((q) => q.market === "MATCH_RESULT" && q.selection === "HOME")!;
+    const input = {
+      matchId,
+      market: quote.market,
+      selection: quote.selection,
+      stake: (await user(sql, first.userId)).coinBalance,
+      expectedOdds: quote.odds,
+      requestId: crypto.randomUUID(),
+    };
+    const accepted = await placeBet(sql, first.userId, input);
+    expect(accepted.coinBalance).toBe(0);
+    const [round] = await sql`SELECT closes_at FROM rounds WHERE id=${match.roundId}`;
+    try {
+      await sql`UPDATE rounds SET closes_at=now()-interval '1 second' WHERE id=${match.roundId}`;
+      const replay = await request("/api/bets", { method: "POST", body: JSON.stringify(input) });
+      expect(replay.status).toBe(201);
+      expect(await replay.json()).toEqual(accepted);
+      const fresh = await request("/api/bets", {
+        method: "POST",
+        body: JSON.stringify({ ...input, requestId: crypto.randomUUID() }),
+      });
+      expect(fresh.status).toBe(409);
+      expect((await user(sql, first.userId)).coinBalance).toBe(0);
+      const [debits] =
+        await sql`SELECT count(*)::int AS n FROM ledger WHERE reference=${`bet:${accepted.betId}:stake`}`;
+      expect(debits.n).toBe(1);
+    } finally {
+      await sql`UPDATE rounds SET closes_at=${round.closes_at} WHERE id=${match.roundId}`;
+      await cancelBet(sql, first.userId, accepted.betId);
+    }
+  });
+  test("public club endpoints never expose private preparation, even to the owner", async () => {
+    const owner = await signup(
+      sql,
+      {
+        email: "private@example.test",
+        username: "private_manager",
+        displayName: "Private manager",
+        password,
+      },
+      config.WEB_ORIGIN,
+    );
+    const club = (await teams(sql)).find((team) => !team.manager)!;
+    await claimTeam(sql, owner.userId, club.id);
+    try {
+      const detail = await teamDetail(sql, club.id, owner.userId);
+      await saveDraft(sql, owner.userId, detail.alternatives[0]!);
+      for (const token of ["", first.token, owner.token]) {
+        const response = await request(`/api/teams/${club.id}`, {}, token);
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({ draft: null, alternatives: [] });
+      }
+      expect((await teamDetail(sql, club.id)).alternatives).toEqual([]);
+      expect((await teamDetail(sql, club.id, first.userId)).draft).toBeNull();
+      const privateView = await request("/api/teams/me", {}, owner.token);
+      expect(privateView.status).toBe(200);
+      expect(await privateView.json()).toMatchObject({
+        id: club.id,
+        draft: detail.alternatives[0],
+        alternatives: detail.alternatives,
+      });
+      expect((await request("/api/teams/me", {}, "")).status).toBe(401);
+      expect(await (await request("/api/teams/me")).json()).toBeNull();
+    } finally {
+      await deactivate(sql, owner.userId, password);
+    }
   });
   test("manager ownership and lineup validation enforce boundaries", async () => {
     const match = (await currentRound(sql))!.matches.find((m) => m.id !== matchId)!;
