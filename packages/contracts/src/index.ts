@@ -39,10 +39,25 @@ export const betInput = z
     selection: z.string().max(20),
     stake: z.number().int().positive().max(1000000),
     requestId: z.uuid(),
+    expectedOdds: z
+      .string()
+      .regex(/^\d{1,6}(?:\.\d{1,4})?$/)
+      .refine((value) => Number(value) >= 1.01)
+      .optional(),
   })
   .strict()
   .refine((v) => validateSelection(v.market, v.selection), "Invalid selection");
 export type BetInput = z.infer<typeof betInput>;
+export const betReceiptSchema = z.object({
+  betId: id,
+  coinBalance: integer,
+  matchId: id,
+  market: z.enum(MARKETS),
+  selection: z.string(),
+  stake: integer,
+  oddsTaken: z.string(),
+  potentialPayout: integer,
+});
 export const lineupInput = z
   .object({
     formation: z.enum(FORMATIONS),
@@ -135,6 +150,8 @@ export const roundSchema = z.object({
 export const betSchema = z.object({
   id,
   matchId: id,
+  homeTeamName: z.string(),
+  awayTeamName: z.string(),
   market: z.enum(MARKETS),
   selection: z.string(),
   stake: integer,

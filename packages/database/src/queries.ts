@@ -43,6 +43,8 @@ interface FixtureRow {
 interface BetRow {
   id: string;
   match_id: string;
+  home_name: string;
+  away_name: string;
   market: string;
   selection: string;
   stake: number;
@@ -107,15 +109,15 @@ export async function teamDetail(sql: SQL, teamId: string, userId?: string) {
   >`SELECT payload FROM players WHERE team_id=${team.id} ORDER BY shirt_number`;
   const lineups = await sql<LineupRow[]>`SELECT kind,payload FROM lineups WHERE team_id=${team.id}`;
   const [owner] = await sql`SELECT manager_id FROM teams WHERE id=${team.id}`;
+  const privateView = !!userId && owner?.manager_id === userId;
   return teamDetailSchema.parse({
     ...team,
     squad: players.map((r) => r.payload),
     official: lineups.find((l) => l.kind === "official")?.payload,
-    alternatives: lineups.filter((l) => l.kind === "alternative").map((l) => l.payload),
-    draft:
-      owner?.manager_id === userId
-        ? (lineups.find((l) => l.kind === "draft")?.payload ?? null)
-        : null,
+    alternatives: privateView
+      ? lineups.filter((l) => l.kind === "alternative").map((l) => l.payload)
+      : [],
+    draft: privateView ? (lineups.find((l) => l.kind === "draft")?.payload ?? null) : null,
   });
 }
 export async function matches(
@@ -182,11 +184,13 @@ export async function matchCenter(sql: SQL, id: string) {
 export async function bets(sql: SQL, userId: string) {
   const rows = await sql<
     BetRow[]
-  >`SELECT b.id,b.match_id,b.stake,b.status,b.payout,b.created_at,o.market,o.selection,o.odds::text FROM bets b JOIN odds o ON o.id=b.quote_id WHERE b.user_id=${userId} ORDER BY b.created_at DESC LIMIT 100`;
+  >`SELECT b.id,b.match_id,h.profile->>'name' AS home_name,a.profile->>'name' AS away_name,b.stake,b.status,b.payout,b.created_at,o.market,o.selection,o.odds::text FROM bets b JOIN odds o ON o.id=b.quote_id JOIN matches m ON m.id=b.match_id JOIN teams h ON h.id=m.home_id JOIN teams a ON a.id=m.away_id WHERE b.user_id=${userId} ORDER BY b.created_at DESC LIMIT 100`;
   return rows.map((r) =>
     betSchema.parse({
       id: r.id,
       matchId: r.match_id,
+      homeTeamName: r.home_name,
+      awayTeamName: r.away_name,
       market: r.market,
       selection: r.selection,
       stake: r.stake,
