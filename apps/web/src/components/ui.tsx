@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { Team } from "@ffb/contracts";
 export function Notice({ children }: { children: ReactNode }) {
   return (
@@ -22,8 +22,20 @@ export function Loading() {
   );
 }
 export function Crest({ team }: { team: Pick<Team, "name" | "crestImageUrl"> }) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  if (failedUrl === team.crestImageUrl || !team.crestImageUrl)
+    return (
+      <span
+        className="crest crest-fallback"
+        role="img"
+        aria-label={`${team.name} crest unavailable`}
+      >
+        {team.name.slice(0, 2)}
+      </span>
+    );
   return (
     <img
+      onError={() => setFailedUrl(team.crestImageUrl)}
       className="crest"
       src={team.crestImageUrl}
       alt={`${team.name} crest`}
@@ -51,8 +63,8 @@ export function PageTitle({
 }) {
   return (
     <header className="page-title">
-      <span className="eyebrow">{eyebrow}</span>
       <h1>{title}</h1>
+      <span className="page-meta">{eyebrow}</span>
       {children && <p>{children}</p>}
     </header>
   );
@@ -62,18 +74,22 @@ export function ActionForm({
   children,
   label = "Save",
   className = "",
+  successMessage = "Saved successfully.",
 }: {
   onSubmit: (form: FormData) => Promise<void>;
   children: ReactNode;
   label?: string;
   className?: string;
+  successMessage?: string;
 }) {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [done, setDone] = useState(false);
+  const submitting = useRef(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy) return;
+    if (submitting.current) return;
+    submitting.current = true;
     const form = new FormData(event.currentTarget);
     setBusy(true);
     setError("");
@@ -84,6 +100,7 @@ export function ActionForm({
     } catch (error) {
       setError(error instanceof Error ? error.message : "Unable to complete request");
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   }
@@ -93,7 +110,7 @@ export function ActionForm({
       <ErrorBox message={error} />
       {done && (
         <span role="status" className="positive">
-          Saved successfully.
+          {successMessage}
         </span>
       )}
       <button className="primary" disabled={busy}>
@@ -127,7 +144,13 @@ export function Field({
         required
         minLength={minLength}
         maxLength={maxLength}
-        autoComplete={type === "password" ? "current-password" : name}
+        autoComplete={
+          type === "password"
+            ? name === "newPassword" || (minLength ?? 0) >= 12
+              ? "new-password"
+              : "current-password"
+            : name
+        }
       />
     </label>
   );
