@@ -29,7 +29,7 @@ export function useResource<T>(path: string | null, schema: z.ZodType<T>) {
           setState((previous) => ({
             path,
             data: previous.path === path ? previous.data : null,
-            error: error instanceof Error ? error.message : "Unable to load",
+            error: `${previous.path === path && previous.data ? "Showing the last confirmed data. " : ""}${error instanceof Error ? error.message : "Unable to load"}`,
             loading: false,
           }));
       } finally {

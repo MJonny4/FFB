@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { userSchema, z, type User } from "@ffb/contracts";
-import { request, coins, refresh } from "./lib/api.ts";
+import { request, refresh } from "./lib/api.ts";
 import { useLive } from "./hooks/useLive.ts";
 import { AuthPage } from "./pages/AuthPage.tsx";
 import { MatchesPage } from "./pages/MatchesPage.tsx";
@@ -9,14 +9,27 @@ import { StandingsPage, LeaderboardPage } from "./pages/TablesPage.tsx";
 import { TeamsPage, TeamPage } from "./pages/TeamsPage.tsx";
 import { MatchPage } from "./pages/MatchPage.tsx";
 import { ProfilePage, PublicProfilePage } from "./pages/ProfilePage.tsx";
+import {
+  CalendarDays,
+  Ticket,
+  ListOrdered,
+  Trophy,
+  Shield,
+  ClipboardList,
+  Menu,
+  X,
+  LogOut,
+  UserRound,
+} from "lucide-react";
+import { Wallet } from "./components/Wallet.tsx";
 import { Notice } from "./components/ui.tsx";
 const navigation = [
-  ["matches", "Fixtures", "◉"],
-  ["bets", "My bets", "◇"],
-  ["standings", "League table", "▤"],
-  ["leaderboard", "Leaderboard", "↗"],
-  ["teams", "The clubs", "⚑"],
-  ["my-team", "My club", "♜"],
+  ["matches", "Fixtures", CalendarDays],
+  ["standings", "League table", ListOrdered],
+  ["teams", "The clubs", Shield],
+  ["leaderboard", "Manager rankings", Trophy],
+  ["bets", "My bets", Ticket],
+  ["my-team", "Manager Room", ClipboardList],
 ] as const;
 function route() {
   return (window.location.hash.slice(1) || "/matches").split("?")[0]!.split("/").filter(Boolean);
@@ -25,24 +38,46 @@ export default function App() {
   const [path, setPath] = useState(route),
     [user, setUser] = useState<User | null>(null),
     [restored, setRestored] = useState(false),
-    [authError, setAuthError] = useState("");
+    [authError, setAuthError] = useState(""),
+    [menuOpen, setMenuOpen] = useState(false),
+    [online, setOnline] = useState(navigator.onLine);
+  const sessionRevision = useRef(0);
   useEffect(() => {
-    const change = () => setPath(route());
+    const status = () => {
+      setOnline(navigator.onLine);
+      if (navigator.onLine) refresh();
+    };
+    window.addEventListener("online", status);
+    window.addEventListener("offline", status);
+    return () => {
+      window.removeEventListener("online", status);
+      window.removeEventListener("offline", status);
+    };
+  }, []);
+  useEffect(() => {
+    const change = () => {
+      setPath(route());
+      setMenuOpen(false);
+      requestAnimationFrame(() => document.getElementById("main-content")?.focus());
+      window.scrollTo(0, 0);
+    };
     window.addEventListener("hashchange", change);
     return () => window.removeEventListener("hashchange", change);
   }, []);
   useEffect(() => {
     let active = true;
     const load = () => {
+      const revision = ++sessionRevision.current;
       void request("/api/auth/session", userSchema.nullable())
         .then((u) => {
-          if (active) {
+          if (active && revision === sessionRevision.current) {
             setUser(u);
             setAuthError("");
           }
         })
         .catch((error) => {
-          if (active && error instanceof Error && error.message === "Please sign in") setUser(null);
+          if (!active || revision !== sessionRevision.current) return;
+          if (error instanceof Error && error.message === "Please sign in") setUser(null);
           else if (active)
             setAuthError("Account service unavailable. Your last confirmed state remains visible.");
         })
@@ -50,21 +85,36 @@ export default function App() {
           if (active) setRestored(true);
         });
     };
+    const accepted = (event: Event) => {
+      const receipt = (event as CustomEvent<{ userId: string; coinBalance: number }>).detail;
+      sessionRevision.current++;
+      setUser((previous) =>
+        previous?.id === receipt.userId
+          ? { ...previous, coinBalance: receipt.coinBalance }
+          : previous,
+      );
+    };
     load();
+    window.addEventListener("ffb:bet-accepted", accepted);
     window.addEventListener("ffb:refresh", load);
     return () => {
       active = false;
       window.removeEventListener("ffb:refresh", load);
+      window.removeEventListener("ffb:bet-accepted", accepted);
     };
   }, []);
   const page = path[0] ?? "matches",
     id = path[1],
     connected = useLive(user?.id, page === "matches" ? id : undefined);
+  function acceptUser(next: User | null) {
+    sessionRevision.current++;
+    setUser(next);
+    setAuthError("");
+  }
   async function logout() {
     try {
       await request("/api/auth/logout", z.null(), { method: "POST" });
-      setUser(null);
-      refresh();
+      acceptUser(null);
     } catch {
       setAuthError("Sign-out failed. Please try again.");
     }
@@ -79,24 +129,28 @@ export default function App() {
         key={page}
         mode={page}
         token={new URLSearchParams(window.location.hash.split("?")[1]).get("token") ?? undefined}
-        onUser={setUser}
+        onUser={acceptUser}
       />
     );
   else if (page === "matches")
-    content = id ? <MatchPage key={id} id={id} /> : <MatchesPage user={user} />;
-  else if (page === "standings") content = <StandingsPage />;
+    content = id ? (
+      <MatchPage key={id} id={id} />
+    ) : (
+      <MatchesPage key={user?.id ?? "visitor"} user={user} />
+    );
+  else if (page === "standings") content = <StandingsPage user={user} />;
   else if (page === "leaderboard") content = <LeaderboardPage />;
   else if (page === "teams")
-    content = id ? <TeamPage key={id} id={id} user={user} /> : <TeamsPage />;
+    content = id ? <TeamPage key={`public:${id}`} id={id} user={user} /> : <TeamsPage />;
   else if (page === "managers" && id) content = <PublicProfilePage username={id} />;
   else if (!restored) content = <Notice>Restoring your session…</Notice>;
-  else if (!user) content = <AuthPage onUser={setUser} />;
-  else if (page === "bets") content = <BetsPage />;
+  else if (!user) content = <AuthPage onUser={acceptUser} />;
+  else if (page === "bets") content = <BetsPage key={user.id} />;
   else if (page === "profile")
-    content = <ProfilePage key={user.id} user={user} onLogout={() => setUser(null)} />;
+    content = <ProfilePage key={user.id} user={user} onLogout={() => acceptUser(null)} />;
   else if (page === "my-team")
     content = user.teamId ? (
-      <TeamPage id={user.teamId} user={user} />
+      <TeamPage key={`manager:${user.teamId}`} id={user.teamId} user={user} manager />
     ) : (
       <>
         <Notice>Choose an available club to take your place on the touchline.</Notice>
@@ -111,53 +165,92 @@ export default function App() {
     );
   return (
     <div className="app-shell">
-      <aside className="sidebar">
-        <a className="brand" href="#/matches">
-          <span className="brand-mark">F</span>
+      <a
+        className="skip-link"
+        href="#main-content"
+        onClick={(e) => {
+          e.preventDefault();
+          document.getElementById("main-content")?.focus();
+        }}
+      >
+        Skip to content
+      </a>
+      <aside className={`sidebar ${menuOpen ? "menu-open" : ""}`}>
+        <a className="brand" href="#/matches" aria-label="FFB · The Touchline, fixtures">
+          <img className="brand-mark" src="/app-icon.png" width="60" height="70" alt="" />
           <span>
-            FFB<span className="brand-sub">FOOTBALL. YOUR CALL.</span>
+            FFB<span className="brand-sub">The Touchline</span>
           </span>
         </a>
-        <div className="league-label">
-          THE LEAGUE <span>2026</span>
-        </div>
-        <nav aria-label="Main navigation">
-          {navigation.map(([href, label, icon]) => (
+        <button
+          className="menu-toggle"
+          aria-expanded={menuOpen}
+          aria-controls="main-navigation"
+          onClick={() => setMenuOpen(!menuOpen)}
+          aria-label={menuOpen ? "Close navigation" : "Open navigation"}
+        >
+          {menuOpen ? <X /> : <Menu />}
+        </button>
+        <p className="league-label">Fictional football league</p>
+        <nav
+          id="main-navigation"
+          aria-label="Main navigation"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              setMenuOpen(false);
+              document.querySelector<HTMLButtonElement>(".menu-toggle")?.focus();
+            }
+          }}
+        >
+          {navigation.map(([href, label, Icon]) => (
             <a
               href={`#/${href}`}
               key={href}
               className={page === href ? "active" : ""}
               aria-current={page === href ? "page" : undefined}
             >
-              <span aria-hidden="true">{icon}</span>
+              <Icon size={18} strokeWidth={1.6} aria-hidden="true" />
               {label}
             </a>
           ))}
+          {user && (
+            <a href="#/profile" aria-current={page === "profile" ? "page" : undefined}>
+              <UserRound size={18} aria-hidden="true" />
+              Profile & wallet
+            </a>
+          )}
         </nav>
         <div className="sidebar-bottom">
-          <span className="badge">SIMULATED FOOTBALL</span>
           <p>
-            Real instincts.
+            Football.
             <br />
-            Virtual stakes.
+            Your call.
           </p>
-          <small>No real money. Just the game.</small>
+          <small>
+            Original clubs. Virtual stakes.
+            <br />
+            No real money.
+          </small>
         </div>
       </aside>
       <div className="main-shell">
         <header className="topbar">
-          <span className={`connection ${connected ? "online" : ""}`}>
-            {connected ? "Live connection" : "HTTP snapshots"}
-          </span>
-          <span className="topbar-season">FICTIONAL FOOTBALL LEAGUE</span>
+          <div className="scope-label">
+            <span>{page === "my-team" ? "Manager Room" : "Public Matchday"}</span>
+            <small className={`connection ${connected ? "online" : ""}`}>
+              {!online ? "Offline" : connected ? "Live updates" : "Matchday updates"}
+            </small>
+          </div>
           <div className="account">
             {user ? (
               <>
-                <a className="wallet" href="#/profile">
-                  ◈ {coins(user.coinBalance)} <small>coins</small>
+                <Wallet key={user.id} balance={user.coinBalance} />
+                <a className="account-name" href="#/profile">
+                  {user.displayName}
                 </a>
-                <a href="#/profile">{user.displayName}</a>
-                <button onClick={() => void logout()}>Sign out</button>
+                <button className="icon-button" onClick={() => void logout()} aria-label="Sign out">
+                  <LogOut size={18} aria-hidden="true" />
+                </button>
               </>
             ) : (
               <a className="primary button-link" href="#/login">
@@ -166,13 +259,19 @@ export default function App() {
             )}
           </div>
         </header>
-        <main id="main-content">
+        <main id="main-content" tabIndex={-1}>
+          {!online && (
+            <Notice>
+              You’re offline. Last confirmed data stays visible. We’ll reconnect when you’re back
+              online.
+            </Notice>
+          )}
           {authError && <Notice>{authError}</Notice>}
           {content}
         </main>
         <footer>
-          FFB · Fictional clubs. Virtual currency. Football that keeps moving.{" "}
-          <span>All times Europe/Madrid</span>
+          <span>FFB · The Touchline. Fictional football, real decisions.</span>
+          <span>Virtual coins only · Europe/Madrid</span>
         </footer>
       </div>
     </div>

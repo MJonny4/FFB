@@ -46,49 +46,62 @@ export function LivePitch({ data }: { data: MatchCenter }) {
     };
     const layout = pitchLayout(dto);
     if (!motion.current) motion.current = new PitchMotion(layout);
-    else motion.current.retarget(layout, performance.now());
-  }, [data]);
-  useEffect(() => {
+    else motion.current.retarget(layout, performance.now(), !document.hidden);
+    const nodes = new Map(
+      [...svg.current!.querySelectorAll<SVGGElement>("[data-player]")].map((node) => [
+        node.dataset.player,
+        node,
+      ]),
+    );
+    const ball = svg.current!.querySelector("[data-ball]");
     let frame = 0,
       previous = performance.now();
+    const started = previous;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
     function paint(now: number) {
       const engine = motion.current;
       if (engine && svg.current) {
-        if (reduced.matches) engine.snap();
+        if (reduced.matches || document.hidden || l?.phase !== "LIVE" || now - started >= 6000)
+          engine.snap();
         else engine.advance(now - previous, now);
         for (const [id, point] of engine.players) {
-          const node = [...svg.current.querySelectorAll<SVGGElement>("[data-player]")].find(
-            (n) => n.dataset.player === id,
-          );
+          const node = nodes.get(id);
           node?.setAttribute("transform", `translate(${point.x},${point.y})`);
         }
-        svg.current
-          .querySelector("[data-ball]")
-          ?.setAttribute("transform", `translate(${engine.ball.x},${engine.ball.y})`);
+        ball?.setAttribute("transform", `translate(${engine.ball.x},${engine.ball.y})`);
       }
       previous = now;
-      frame = requestAnimationFrame(paint);
+      if (!reduced.matches && !document.hidden && l?.phase === "LIVE" && now - started < 6000)
+        frame = requestAnimationFrame(paint);
     }
-    frame = requestAnimationFrame(paint);
-    return () => cancelAnimationFrame(frame);
-  }, []);
+    const snap = () => {
+      cancelAnimationFrame(frame);
+      motion.current?.snap();
+      paint(performance.now());
+    };
+    paint(previous);
+    reduced.addEventListener("change", snap);
+    document.addEventListener("visibilitychange", snap);
+    return () => {
+      cancelAnimationFrame(frame);
+      reduced.removeEventListener("change", snap);
+      document.removeEventListener("visibilitychange", snap);
+    };
+  }, [data]);
   return (
     <svg
       ref={svg}
       className="pitch"
       viewBox="0 0 1000 620"
       role="img"
-      aria-label="Live match pitch showing player and ball movement"
+      aria-label={
+        data.live
+          ? "Match pitch showing player positions and the ball. Score and commentary follow alongside."
+          : "Pitch awaiting kickoff"
+      }
     >
-      <defs>
-        <pattern id="grass" width="110" height="620" patternUnits="userSpaceOnUse">
-          <rect width="55" height="620" fill="#184e3b" />
-          <rect x="55" width="55" height="620" fill="#1d5942" />
-        </pattern>
-      </defs>
-      <rect width="1000" height="620" rx="16" fill="url(#grass)" />
-      <g stroke="#b5d1be" strokeWidth="2" opacity=".7" fill="none">
+      <rect width="1000" height="620" fill="#151b18" />
+      <g stroke="#73887b" strokeWidth="2" opacity=".7" fill="none">
         <rect x="60" y="50" width="880" height="520" />
         <path d="M500 50V570" />
         <circle cx="500" cy="310" r="73" />
@@ -110,7 +123,16 @@ export function LivePitch({ data }: { data: MatchCenter }) {
                   stroke="white"
                   strokeWidth="2"
                 />
-                <text textAnchor="middle" dy="5" fill="white" fontSize="13" fontWeight="bold">
+                <text
+                  textAnchor="middle"
+                  dy="5"
+                  fill="#fff"
+                  stroke="#000"
+                  strokeWidth="3"
+                  paintOrder="stroke"
+                  fontSize="13"
+                  fontWeight="bold"
+                >
                   {p.shirtNumber}
                 </text>
                 <title>{p.name}</title>

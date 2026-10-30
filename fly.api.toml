@@ -11,7 +11,7 @@ NODE_ENV = "production"
 API_HOST = "0.0.0.0"
 API_PORT = "8080"
 MAIL_MODE = "smtp"
-WEB_ORIGIN = "https://ffb-web-coral.vercel.app"
+WEB_ORIGIN = "https://ffb.ximuntion.dev"
 TRUST_FLY_PROXY = "true"
 
 [deploy]

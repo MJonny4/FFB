@@ -1,8 +1,20 @@
 import type { SQL } from "bun";
-import type { BetInput } from "@ffb/contracts";
+import { betReceiptSchema, type BetInput } from "@ffb/contracts";
+import { calculatePayout } from "@ffb/football";
 import { DomainError, uid } from "./client.ts";
 import { wallet } from "./wallet.ts";
 export async function placeBet(sql: SQL, userId: string, input: BetInput) {
+  const receipt = (betId: string, oddsTaken: string, coinBalance: number) =>
+    betReceiptSchema.parse({
+      betId,
+      coinBalance,
+      matchId: input.matchId,
+      market: input.market,
+      selection: input.selection,
+      stake: input.stake,
+      oddsTaken,
+      potentialPayout: calculatePayout(input.stake, oddsTaken),
+    });
   return sql.begin(async (tx) => {
     const [m] =
       await tx`SELECT m.id,m.home_id,m.away_id,m.status,m.state,m.scheduled_at,r.closes_at,r.opens_at,r.status AS round_status FROM matches m JOIN rounds r ON r.id=m.round_id WHERE m.id=${input.matchId} FOR UPDATE OF m`;
@@ -11,7 +23,7 @@ export async function placeBet(sql: SQL, userId: string, input: BetInput) {
       await tx`SELECT id FROM users WHERE id=${userId} AND deactivated_at IS NULL FOR UPDATE`;
     if (!u) throw new DomainError(401, "Please sign in");
     const [existing] =
-      await tx`SELECT b.id,b.match_id,b.stake,o.market,o.selection FROM bets b JOIN odds o ON o.id=b.quote_id WHERE b.user_id=${userId} AND b.request_id=${input.requestId}`;
+      await tx`SELECT b.id,b.match_id,b.stake,o.market,o.selection,o.odds::text FROM bets b JOIN odds o ON o.id=b.quote_id WHERE b.user_id=${userId} AND b.request_id=${input.requestId}`;
     if (existing) {
       if (
         existing.match_id !== input.matchId ||
@@ -20,7 +32,7 @@ export async function placeBet(sql: SQL, userId: string, input: BetInput) {
         existing.selection !== input.selection
       )
         throw new DomainError(409, "Idempotency key already used");
-      return { betId: existing.id, coinBalance: await balance(tx, userId) };
+      return receipt(existing.id, existing.odds, await balance(tx, userId));
     }
     const [clock] = await tx`SELECT clock_timestamp() AS now`;
     if (
@@ -36,14 +48,17 @@ export async function placeBet(sql: SQL, userId: string, input: BetInput) {
       await tx`SELECT id FROM teams WHERE manager_id=${userId} AND id IN(${m.home_id},${m.away_id})`;
     if (manager) throw new DomainError(409, "Managers cannot bet on their own club");
     const [quote] =
-      await tx`SELECT id FROM odds WHERE match_id=${m.id} AND market=${input.market} AND selection=${input.selection} ORDER BY revision DESC LIMIT 1`;
+      await tx`SELECT id,odds::text FROM odds WHERE match_id=${m.id} AND market=${input.market} AND selection=${input.selection} ORDER BY revision DESC LIMIT 1`;
     if (!quote) throw new DomainError(409, "Quote unavailable");
+    if (input.expectedOdds !== undefined && Number(input.expectedOdds) !== Number(quote.odds))
+      throw new DomainError(409, "Odds changed. Review the updated price before confirming again.");
     const id = uid();
     await tx`INSERT INTO bets(id,user_id,match_id,quote_id,request_id,stake) VALUES(${id},${userId},${m.id},${quote.id},${input.requestId},${input.stake})`;
-    return {
-      betId: id,
-      coinBalance: await wallet(tx, userId, "STAKE", -input.stake, `bet:${id}:stake`),
-    };
+    return receipt(
+      id,
+      quote.odds,
+      await wallet(tx, userId, "STAKE", -input.stake, `bet:${id}:stake`),
+    );
   });
 }
 async function balance(sql: SQL, userId: string) {

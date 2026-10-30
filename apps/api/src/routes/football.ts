@@ -49,8 +49,7 @@ export async function footballRoutes(ctx: Context, path: string) {
         await matches(sql, { teamId: id, ...(cursor ? { before: cursor } : {}), limit: 20 }),
       );
     }
-    if (!team[3] && method === "GET")
-      return json(await teamDetail(sql, id, ctx.userId ?? undefined));
+    if (!team[3] && method === "GET") return json(await teamDetail(sql, id));
   }
   const match = /^\/api\/matches\/([^/]+)\/(live|events)$/.exec(path);
   if (match && method === "GET") {

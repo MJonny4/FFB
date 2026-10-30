@@ -4,7 +4,17 @@ import { apiBase, refresh } from "../lib/api.ts";
 export function useLive(userId: string | undefined, matchId: string | undefined) {
   const [connected, setConnected] = useState(false);
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) {
+      const poll = () => {
+        if (!document.hidden && navigator.onLine) refresh();
+      };
+      const interval = setInterval(poll, matchId ? 3000 : 15000);
+      document.addEventListener("visibilitychange", poll);
+      return () => {
+        clearInterval(interval);
+        document.removeEventListener("visibilitychange", poll);
+      };
+    }
     let stopped = false,
       socket: WebSocket | undefined,
       retry: ReturnType<typeof setTimeout> | undefined,

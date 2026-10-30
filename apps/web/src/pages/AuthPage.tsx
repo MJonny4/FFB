@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { userSchema, z } from "@ffb/contracts";
-import type { User } from "@ffb/contracts";
+import { teamSchema, userSchema, z, type User } from "@ffb/contracts";
+import { useResource } from "../hooks/useResource.ts";
 import { request, accepted, refresh } from "../lib/api.ts";
-import { ActionForm, Field, PageTitle, Notice } from "../components/ui.tsx";
-const authResponse = z.object({ user: userSchema });
+import { ActionForm, Field, PageTitle, Notice, Crest } from "../components/ui.tsx";
+import "./accounts.css";
+const authResponse = z.object({ user: userSchema }),
+  teamsResponse = z.array(teamSchema);
 export function AuthPage({
   mode = "login",
   token,
@@ -11,9 +13,11 @@ export function AuthPage({
 }: {
   mode?: string;
   token?: string;
-  onUser: (u: User) => void;
+  onUser: (user: User) => void;
 }) {
   const [view, setView] = useState(mode);
+  const teams = useResource("/api/teams", teamsResponse);
+  const requiresToken = view === "verify-email" || view === "reset-password";
   async function submit(form: FormData) {
     const email = String(form.get("email") ?? ""),
       password = String(form.get("password") ?? "");
@@ -51,37 +55,10 @@ export function AuthPage({
     window.location.hash = "/matches";
   }
   return (
-    <div className="auth-grid">
-      <section className="auth-story">
-        <span className="eyebrow">THE FICTIONAL FOOTBALL LEAGUE</span>
-        <h1>
-          Your club.
-          <br />
-          Your call.
-        </h1>
-        <p>
-          Twenty clubs. A league that never stops. Build your starting XI, follow every match and
-          put your football instincts to the test.
-        </p>
-        <div className="auth-stats">
-          <div>
-            <strong>20</strong>
-            <span>original clubs</span>
-          </div>
-          <div>
-            <strong>460</strong>
-            <span>players</span>
-          </div>
-          <div>
-            <strong>100%</strong>
-            <span>virtual coins</span>
-          </div>
-        </div>
-        <p className="muted">A simulation for the love of the game. No real money.</p>
-      </section>
-      <section className="panel">
+    <div className="auth-layout">
+      <section className="auth-form-surface">
         <PageTitle
-          eyebrow="WELCOME TO FFB"
+          eyebrow="FFB · The Touchline"
           title={
             view === "signup"
               ? "Join the league"
@@ -91,11 +68,21 @@ export function AuthPage({
                   ? "Verify your email"
                   : view === "reset-password"
                     ? "Choose a new password"
-                    : "Back in the game"
+                    : "Sign in"
           }
-        />
+        >
+          {view === "signup"
+            ? "Create your manager identity. All stakes are virtual coins."
+            : view === "login"
+              ? "Your club, starting XI and wallet are waiting."
+              : view === "forgot-password"
+                ? "Enter your account email to request a reset link."
+                : view === "verify-email"
+                  ? "Confirm your email to complete your account."
+                  : "Use at least 12 characters for your new password."}
+        </PageTitle>
         {["login", "signup"].includes(view) && (
-          <div className="tabs">
+          <div className="tabs" aria-label="Account access">
             <button aria-pressed={view === "login"} onClick={() => setView("login")}>
               Sign in
             </button>
@@ -104,48 +91,112 @@ export function AuthPage({
             </button>
           </div>
         )}
-        <ActionForm
-          key={view}
-          onSubmit={submit}
-          label={
-            view === "verify-email"
-              ? "Verify email"
-              : view === "forgot-password"
-                ? "Send reset link"
-                : view === "signup"
-                  ? "Create account"
-                  : "Continue"
-          }
-        >
-          {view === "signup" && (
-            <>
-              <Field name="displayName" label="Display name" maxLength={60} />
-              <Field name="username" label="Username" minLength={3} maxLength={30} />
-            </>
-          )}
-          {!["verify-email", "reset-password"].includes(view) && (
-            <Field name="email" label="Email" type="email" />
-          )}
-          {!["verify-email", "forgot-password"].includes(view) && (
-            <Field
-              name="password"
-              label={view === "login" ? "Password" : "Password · at least 12 characters"}
-              type="password"
-              minLength={view === "login" ? 1 : 12}
-              maxLength={128}
-            />
-          )}
-          {view === "forgot-password" && (
-            <Notice>If an account matches, a reset link will be sent.</Notice>
-          )}
-        </ActionForm>
-        <button
-          className="text-button"
-          onClick={() => setView(view === "login" ? "forgot-password" : "login")}
-        >
-          {view === "login" ? "Forgot password?" : "Return to sign in"}
-        </button>
+        {requiresToken && !token ? (
+          <Notice>
+            This link is incomplete.{" "}
+            {view === "reset-password" ? (
+              <a href="#/forgot-password">Request a new reset link</a>
+            ) : (
+              <a href="#/profile">Sign in and request a verification email</a>
+            )}
+            .
+          </Notice>
+        ) : (
+          <ActionForm
+            key={view}
+            onSubmit={submit}
+            label={
+              view === "verify-email"
+                ? "Verify email"
+                : view === "forgot-password"
+                  ? "Send reset link"
+                  : view === "signup"
+                    ? "Create account"
+                    : view === "reset-password"
+                      ? "Save new password"
+                      : "Sign in"
+            }
+            successMessage={
+              view === "forgot-password"
+                ? "If that email matches an account, a password reset link has been sent. Check your inbox."
+                : view === "verify-email"
+                  ? "Your email is verified. Return to fixtures to follow the league."
+                  : "Signed in successfully."
+            }
+          >
+            {view === "signup" && (
+              <>
+                <Field name="displayName" label="Display name" maxLength={60} />
+                <label>
+                  Username
+                  <input
+                    name="username"
+                    autoComplete="username"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    minLength={3}
+                    maxLength={30}
+                    pattern="[a-z][a-z0-9_]{2,29}"
+                    aria-describedby="username-hint"
+                    required
+                  />
+                  <small id="username-hint">
+                    3–30 lowercase letters, numbers or underscores. Start with a letter.
+                  </small>
+                </label>
+              </>
+            )}
+            {!["verify-email", "reset-password"].includes(view) && (
+              <Field name="email" label="Email" type="email" />
+            )}
+            {!["verify-email", "forgot-password"].includes(view) && (
+              <Field
+                name="password"
+                label={view === "login" ? "Password" : "Password · at least 12 characters"}
+                type="password"
+                minLength={view === "login" ? 1 : 12}
+                maxLength={128}
+              />
+            )}
+            {view === "verify-email" && (
+              <p className="muted">Verify the address used when you joined FFB.</p>
+            )}
+          </ActionForm>
+        )}
+        <div className="auth-secondary">
+          <button
+            className="text-button"
+            onClick={() => setView(view === "login" ? "forgot-password" : "login")}
+          >
+            {view === "login" ? "Forgot password?" : "Return to sign in"}
+          </button>
+          <a href="#/matches">Browse fixtures</a>
+        </div>
       </section>
+      <aside className="auth-league" aria-labelledby="auth-league-heading">
+        <h2 id="auth-league-heading">A league of your own</h2>
+        <p>
+          Twenty original clubs. Choose yours, publish a starting XI and follow the match from the
+          touchline.
+        </p>
+        {teams.data && (
+          <div className="auth-clubs">
+            {teams.data.slice(0, 6).map((team) => (
+              <a href={`#/teams/${team.id}`} key={team.id}>
+                <Crest team={team} />
+                <span>{team.shortName}</span>
+              </a>
+            ))}
+          </div>
+        )}
+        <p className="muted">
+          Bet virtual coins on other clubs. Every accepted stake and return stays in your wallet
+          history.
+        </p>
+        <a className="button-link" href="#/teams">
+          Meet the clubs
+        </a>
+      </aside>
     </div>
   );
 }
